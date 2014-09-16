@@ -194,7 +194,7 @@ normalize_seconds(State, Seconds) ->
         Value when Value >= 0 ->
             Value;
         _ ->
-            erlang:display(erlang:get_stacktrace()),
+            error_logger:error_msg("invalid_once_exception ~p~n", [erlang:get_stacktrace()]),
             throw(invalid_once_exception)
     end.
 
@@ -204,9 +204,6 @@ normalize_seconds(State, Seconds) ->
                                    erlcron:seconds().
 until_next_time(_State, {{once, Seconds}, _What}) when is_integer(Seconds) ->
     Seconds;
-until_next_time(State, {{once, {H, M, S}}, _What})
-  when is_integer(H), is_integer(M), is_integer(S) ->
-    normalize_seconds(State, S + (M + (H * 60)) * 60);
 until_next_time(State, {{once, Period}, _What})  ->
     normalize_seconds(State, resolve_time(Period));
 until_next_time(State, {{daily, Period}, _What}) ->
@@ -219,7 +216,7 @@ until_next_time(State, {{weekly, DoW, Period}, _What}) ->
         OnDay ->
             until_next_daytime_or_days_from_now(State, Period, 7);
         Today when Today < OnDay ->
-                    until_days_from_now(State, Period, OnDay - Today);
+            until_days_from_now(State, Period, OnDay - Today);
         Today when Today > OnDay  ->
             until_days_from_now(State, Period, (OnDay+7) - Today)
     end;
