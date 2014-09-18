@@ -75,7 +75,8 @@ validate(Spec) ->
     {DateTime, Actual} = ecrn_control:datetime(),
     NewState = set_internal_time(State, DateTime, Actual),
     try
-        until_next_time(NewState, {Spec, undefined}),
+        NextTime = until_next_time(NewState, {Spec, undefined}),
+        ?PRINT("NextTime ~p~n", [NextTime]),
         valid
     catch
         _Error:_Reason ->
@@ -220,25 +221,71 @@ until_next_time(State, {{weekly, DoW, Period}, _What}) ->
         Today when Today > OnDay  ->
             until_days_from_now(State, Period, (OnDay+7) - Today)
     end;
-until_next_time(State, {{monthly, DoM, Period}, _What}) ->
+until_next_time(State, {{monthly, DoM, Period}, _What}) 
+  when is_integer(DoM), DoM =< 31 ->
+    until_next_time(State, {{monthly, [DoM], Period}, _What});
+until_next_time(State, {{monthly, DoMList, Period}, _What}) ->
     {{ThisYear, ThisMonth, Today}, _} = current_date(State),
-    {NextYear, NextMonth} =
-        case ThisMonth of
-            12 ->
-                {ThisYear + 1, 1};
-            _  ->
-                {ThisYear, ThisMonth + 1}
-        end,
+    CurrentTime = current_time(State),
+    CmpOp = case last_time(Period) of
+               T when T < CurrentTime ->
+                   '>';
+               _ ->
+                   '>='
+           end,
+    {NextYear, NextMonth, NextDay} = next_day(ThisYear, ThisMonth, Today, DoMList, CmpOp),
     D1 = calendar:date_to_gregorian_days(ThisYear, ThisMonth, Today),
-    D2 = calendar:date_to_gregorian_days(NextYear, NextMonth, DoM),
+    D2 = calendar:date_to_gregorian_days(NextYear, NextMonth, NextDay),
+    ?PRINT("{NextYear, NextMonth, NextDay} ~p~n", [{NextYear, NextMonth, NextDay}]),
     Days = D2 - D1,
     case Today of
-        DoM ->
+        NextDay ->
             until_next_daytime_or_days_from_now(State, Period, Days);
         _ ->
             until_days_from_now(State, Period, Days)
     end.
 
+next_day(Year, Month, Day, DoMList, CmpOp) ->
+    case [DoM || DoM <- DoMList, DoM > 31] of
+        [] ->
+            SortDoMList = lists:sort(DoMList),
+            Last = calendar:last_day_of_the_month(Year, Month),
+            case next_day2(SortDoMList, Day, CmpOp) of
+                NextDay 
+                  when NextDay =< Last ->
+                    %% 当前月，而且NextDay合法                                              
+                    {Year, Month, NextDay};
+                _ ->
+                    %% 从SortDoMList第一个开始，进入下个月
+                    next_month(Year, Month, hd(SortDoMList))            
+            end
+    end.
+
+next_month(Year, Month, Day) ->
+    {NextYear, NextMonth} =
+        case Month of
+            12 ->
+                {Year + 1, 1};
+            _  ->
+                {Year, Month + 1}
+        end,
+    Last = calendar:last_day_of_the_month(NextYear, NextMonth),
+    if
+        Last < Day ->
+            next_month(NextYear, NextMonth, Day);
+        true ->
+            {NextYear, NextMonth, Day}
+    end.
+
+next_day2([], _Today, _CmpOp) ->
+    undefined;
+next_day2([Day|AccDoMList], Today, CmpOp) ->
+    case erlang:CmpOp(Day, Today) of
+        true ->
+            Day;       
+        false ->
+            next_day2(AccDoMList, Today, CmpOp)
+    end.
 %% @doc Calculates the duration in seconds until the next time this
 %% period is to occur during the day.
 -spec until_next_daytime/2 :: (state(), erlcron:period()) -> erlcron:seconds().

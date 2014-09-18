@@ -22,6 +22,7 @@ cron_test_() ->
              fun cancel_alarm_test/1,
              fun big_time_jump_test/1,
              fun cron_test/1,
+             fun monthly_cron_test/1,
              fun validation_test/1]}}.
 
 set_alarm_test(_) ->
@@ -146,6 +147,31 @@ cron_test(_) ->
                          2500 -> timeout
                      end).
 
+monthly_cron_test(_) ->
+    Day1 = {2000,1,1},
+    AlarmTimeOfDay = {15,29,58},
+    erlcron:set_datetime({Day1, AlarmTimeOfDay}),
+
+    Self = self(),
+
+    Job = {{monthly, [1,30], {3, 30, pm}},
+            fun(_, _) ->
+                    Self ! ack
+            end},
+
+    erlcron:cron(Job),
+    ?assertMatch(ok, receive
+                         ack -> ok
+                     after
+                         2500 -> timeout
+                     end),
+    erlcron:set_datetime({{2000,3,30}, AlarmTimeOfDay}),
+    ?assertMatch(ok, receive
+                         ack -> ok
+                     after
+                         2500 -> timeout
+                     end).
+
 validation_test(_) ->
     ?assertMatch(valid, ecrn_agent:validate({once, {3, 30, pm}})),
     ?assertMatch(valid, ecrn_agent:validate({once, 3600})),
@@ -156,7 +182,9 @@ validation_test(_) ->
     ?assertMatch(valid, ecrn_agent:validate({weekly, wed, {2, am}})),
     ?assertMatch(valid, ecrn_agent:validate({monthly, 1, {2, am}})),
     ?assertMatch(valid, ecrn_agent:validate({monthly, 4, {2, am}})),
+    ?assertMatch(valid, ecrn_agent:validate({monthly, [1,4,30], {2, am}})),
     ?assertMatch(invalid, ecrn_agent:validate({daily, {55, 22, am}})),
+    ?assertMatch(invalid, ecrn_agent:validate({monthly, [1,3,65], {55, am}})),
     ?assertMatch(invalid, ecrn_agent:validate({monthly, 65, {55, am}})).
 
 %%%===================================================================
