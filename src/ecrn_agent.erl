@@ -371,6 +371,10 @@ resolve_dur({Sec, sec}) ->
 %% @doc Returns the number of the given day of the week. See the calendar
 %% module for day numbers.
 -spec resolve_dow/1 :: (erlcron:dow()) -> integer().
+resolve_dow(Int) 
+  when is_integer(Int), 
+       Int >= 1, Int =< 7 ->
+    Int;
 resolve_dow(mon) ->
     1;
 resolve_dow(tue) ->
